@@ -1,0 +1,16 @@
+
+#!/bin/bash
+
+{{if .Bastion.VM.Name}}
+# Flow A: Reuse Bastion
+echo "Reusing bastion: {{.Bastion.VM.Name}}"
+openstack server add network {{.Bastion.VM.Name}} {{.InternalNetwork.Name}}
+# Other commands for reusing the bastion...
+echo "Reusing bastion: {{.Bastion.Ip}}"
+openstack server add floating ip bastion {{ .Bastion.Ip }}
+{{else}}
+# Flow B: Create Bastion
+echo "No bastion defined, a new one will be created by Terraform."
+# This script might not need to do anything in this case,
+# as Terraform will handle the bastion creation.
+{{end}}

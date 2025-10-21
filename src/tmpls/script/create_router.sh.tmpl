@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Create router
+openstack router create {{ .NeutronRouter.Name }}
+
+# Add router to external network
+openstack router set --external-gateway {{ .NeutronRouter.ExternalNetwork.Name }} {{ .NeutronRouter.Name }} 
+
+# Attach internal subnet to router
+openstack router add subnet {{ .NeutronRouter.Name }} {{ .InternalNetwork.Subnet.Name }}

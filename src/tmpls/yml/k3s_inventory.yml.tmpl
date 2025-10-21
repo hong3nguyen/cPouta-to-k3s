@@ -1,0 +1,19 @@
+k3s_cluster:
+  children:
+    server:
+      hosts:
+        {{- range .k3s_cluster.Master}}
+        {{ .Ip }}:
+        {{- end}}
+    agent:
+      hosts:
+        {{- range .k3s_cluster.Worker}}
+        {{ .Ip }}:
+        {{- end}}
+  vars:
+    {{- range $key, $value := .k3s_cluster.Vars}}
+    {{ $key }}: {{ $value }}
+    {{- end}}
+    {{- if .k3s_cluster.Master }}
+    api_endpoint: {{ (index .k3s_cluster.Master 0).Ip }}
+    {{- end }}

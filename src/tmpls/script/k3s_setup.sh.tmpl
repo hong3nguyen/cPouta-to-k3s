@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Install k3s on masters
+{{range loop .K3s.Masters.Number}}# Commands for master node {{.}}
+echo "Setting up master node {{.}}"
+curl -sfL https://get.k3s.io | sh -
+{{end}}
+
+# Install k3s on workers
+{{range loop .K3s.Workers.Number}}# Commands for worker node {{.}}
+echo "Setting up worker node {{.}}"
+# TODO: Implement logic to join worker nodes to the cluster
+{{end}}

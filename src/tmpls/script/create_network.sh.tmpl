@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# Create internal network
+#openstack network create {{ .InternalNetwork.Name }}
+
+if openstack network show k3s-internal >/dev/null 2>&1; then
+  echo "Network {{ .InternalNetwork.Name }} already exists."
+else
+  echo "Creating network {{ .InternalNetwork.Name }}..."
+  openstack network create {{ .InternalNetwork.Name }}
+fi
+
+# Create internal subnet
+if openstack subnet show {{ .InternalNetwork.Subnet.Name }} >/dev/null 2>&1; then
+  echo "Subnet  {{ .InternalNetwork.Subnet.Name }} already exists."
+else
+  echo "Creating subnet {{ .InternalNetwork.Subnet.Name }}..."
+
+  openstack subnet create \
+    --network {{ .InternalNetwork.Name }} \
+    --subnet-range {{ .InternalNetwork.Subnet.NetworkCidr }} \
+    {{ .InternalNetwork.Subnet.Name }}
+

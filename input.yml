@@ -1,0 +1,51 @@
+internal_network:
+  name: "k3s-internal"
+  subnet:
+    name: "k3s-subnet"
+    network_cidr: "192.168.132.0/24"
+
+bastion:
+  name: "bastion"
+  flavor: "standard.small"
+  image: "Ubuntu-22.04"
+
+neutron_router:
+  name: "k3s-router-to-public"
+  external_network:
+    name: "public"
+  internal_network:
+    name: "k3s-internal"
+
+firewall:
+  firewall_external:
+    - name: "allow-ssh"
+      ports: ["22"]
+      source_ranges: ["0.0.0.0/0"]
+    - name: "allow-http"
+      ports: ["80"]
+      source_ranges: ["0.0.0.0/0"]
+  firewall_internal:
+    - name: "allow-all-internal"
+      ports: ["0-65535"]
+      source_ranges: ["192.168.132.0/24"]
+
+# 1 master and many worker
+k3s:
+  masters:
+    name: "k3s-master"
+    role: "master"
+    user: "ubuntu"
+    image: "Ubuntu-22.04"
+    flavor: "standard.small"
+    number: 1
+  workers:
+    name: "k3s-worker"
+    role: "worker"
+    user: "ubuntu"
+    image: "Ubuntu-22.04"
+    flavor: "standard.small"
+    number: 1
+  vars:
+    ansible_user: ubuntu
+    k3s_version: v1.33.0+k3s1
+    extra_server_args: "--flannel-backend=none --disable-network-policy"

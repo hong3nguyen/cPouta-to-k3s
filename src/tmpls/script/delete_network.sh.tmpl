@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# Delete internal subnet
+openstack subnet delete {{ .InternalNetwork.Subnet.Name }}
+
+# Delete internal network
+openstack network delete {{ .InternalNetwork.Name }}

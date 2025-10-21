@@ -1,0 +1,188 @@
+terraform {
+  required_providers {
+    openstack = {
+      source  = "terraform-provider-openstack/openstack"
+      version = "~> 1.51"
+    }
+  }
+  required_version = ">= 1.0"
+}
+
+provider "openstack" {
+  # Auth via environment variables # require source the script before running terraform apply Users not using loadbalancer resources can ignore this message. Support for neutron-lbaas will be removed on next major release. Octavia will be the only supported method for loadbalancer resources. Users using octavia will have to remove 'use_octavia' option from # the provider configuration block. Users using neutron-lbaas will have to migrate/upgrade to octavia.
+}
+
+data "openstack_networking_network_v2" "internal_network" {
+  name = "{{ .InternalNetwork.Name }}"
+}
+
+# ------------------------------------------------
+variable "ssh_public_key_path" {
+  type    = string
+  default = "{{ .SshPublicKeyPath }}"
+}
+
+variable "ssh_private_key_path" {
+  type    = string
+  default = "{{ .SshPrivateKeyPath }}"
+}
+
+
+
+# ------------------------------------------------
+# Create a new security group
+resource "openstack_networking_secgroup_v2" "k3s_sg" {
+  name        = "k3s_sg"
+  description = "Security group for k3s cluster"
+}
+
+# ------------------------------------------------
+# Define firewall rules
+{{- range .Firewall.FirewallExternal }}
+resource "openstack_networking_secgroup_rule_v2" "{{ .Name }}" {
+  direction         = "ingress"
+  ethertype         = "IPv4"
+  protocol          = "tcp"
+  {{if eq (len .Ports) 1}}
+  port_range_min    = {{ index .Ports 0 }}
+  port_range_max    = {{ index .Ports 0 }}
+  {{else}}
+  port_range_min    = {{ index .Ports 0 }}
+  port_range_max    = {{ index .Ports 1 }}
+  {{end}}
+  remote_ip_prefix  = "{{ index .SourceRanges 0 }}"
+  security_group_id = openstack_networking_secgroup_v2.k3s_sg.id
+}
+{{- end }}
+
+{{- range .Firewall.FirewallInternal }}
+resource "openstack_networking_secgroup_rule_v2" "{{ .Name }}" {
+  direction         = "ingress"
+  ethertype         = "IPv4"
+  remote_ip_prefix  = "{{ index .SourceRanges 0 }}"
+  security_group_id = openstack_networking_secgroup_v2.k3s_sg.id
+}
+{{- end }}
+
+# ------------------------------------------------
+# Create a new key pair
+resource "openstack_compute_keypair_v2" "k3s_key" {
+  name       = "k3s_key"
+  public_key = file(var.ssh_public_key_path)
+}
+
+# # ------------------------------------------------
+# # Output the IP addresses of the k3s nodes
+# output "k3s_node_ips" {
+#   value = openstack_compute_instance_v2.k3s_nodes[*].access_ip_v4
+# }
+# 
+# # ------------------------------------------------
+# # Output the content of the k3s configuration file
+# output "k3s_config" {
+#   value = provisioner.remote-exec.commands[3].stdout
+# }
+
+{{if not .Bastion.VM.Name}}
+# Flow B: Create Bastion VM
+resource "openstack_compute_instance_v2" "bastion" {
+  name        = "bastion"
+  image_name  = "standard.small"
+  flavor_name = "Ubuntu-22.04"
+  key_pair    = "k3s_key"
+  security_groups = ["default", "k3s_sg"]
+
+  network {
+    uuid = data.openstack_networking_network_v2.internal_network.id
+  }
+}
+
+# Public IP allocation
+resource "openstack_networking_floatingip_v2" "bastion_fip" {
+  pool = "public" # change if CSC has a different external network
+}
+
+# Floating IP association
+resource "openstack_networking_floatingip_associate_v2" "bastion_fip_assoc" {
+  floating_ip = openstack_networking_floatingip_v2.bastion_fip.address
+  port_id     = openstack_compute_instance_v2.bastion.network[0].port
+}
+
+{{end}}
+
+# -----------------------------------------------
+# Master instances
+#
+resource "openstack_networking_port_v2" "master_port" {
+  count              = {{ .K3s.Masters.Number }}
+  name               = "k3s-master-port-${count.index}"
+  network_id         = data.openstack_networking_network_v2.internal_network.id
+  security_group_ids = [openstack_networking_secgroup_v2.k3s_sg.id]
+}
+
+# Master instances
+resource "openstack_compute_instance_v2" "k3s-master" {
+  count           = {{ .K3s.Masters.Number }}
+  name            = "k3s-master-${count.index}"
+  image_name      = "{{ .K3s.Masters.VM.Image }}"
+  flavor_name     = "{{ .K3s.Masters.VM.Flavor }}"
+  key_pair        = openstack_compute_keypair_v2.k3s_key.name
+  security_groups = [openstack_networking_secgroup_v2.k3s_sg.name]
+
+  network {
+    port = openstack_networking_port_v2.master_port[count.index].id
+  }
+}
+
+# Public IP allocation for master
+resource "openstack_networking_floatingip_v2" "master_fip" {
+  pool = "public" # change if CSC has a different external network
+}
+
+# Floating IP Association
+# resource "openstack_networking_floatingip_associate_v2" "master_fip_assoc"{
+#   floating_ip = openstack_networking_floatingip_v2.master_fip.address
+#   port_id     = openstack_compute_instance_v2.k3s-master[0].network[0].port
+# }
+resource "openstack_networking_floatingip_associate_v2" "master_fip_assoc" {
+  floating_ip = openstack_networking_floatingip_v2.master_fip.address
+  port_id     = openstack_networking_port_v2.master_port[0].id
+}
+
+output "master_floating_ip" {
+  value = openstack_networking_floatingip_v2.master_fip.address
+}
+# ------------------------------------------------
+# Worker instances
+resource "openstack_compute_instance_v2" "k3s-worker" {
+  count           = {{ .K3s.Workers.Number }}
+  name            = "k3s-worker-${count.index}"
+  image_name      = "{{ .K3s.Workers.VM.Image }}"
+  flavor_name     = "{{ .K3s.Workers.VM.Flavor }}"
+  key_pair        = openstack_compute_keypair_v2.k3s_key.name
+  security_groups = [openstack_networking_secgroup_v2.k3s_sg.name]
+  network {
+    uuid = data.openstack_networking_network_v2.internal_network.id
+  }
+  # user_data = file("${path.module}/k3s_setup.sh")
+}
+
+# Master private IP
+output "k3s_master_private_ip" {
+  value = [
+    for instance in openstack_compute_instance_v2.k3s-master :
+    instance.network.0.fixed_ip_v4
+    # for w in openstack_compute_instance_v2.k3s-master :
+    # w.addresses["{{ .InternalNetwork.Name }}"][0]["addr"]
+  ]
+}
+
+# Worker private IPs
+output "k3s_worker_private_ip" {
+  value = [
+    for instance in openstack_compute_instance_v2.k3s-worker :
+    instance.network.0.fixed_ip_v4
+    # for w in openstack_compute_instance_v2.k3s-worker :
+    # w.addresses["{{ .InternalNetwork.Name }}"][0]["addr"]
+  ]
+}

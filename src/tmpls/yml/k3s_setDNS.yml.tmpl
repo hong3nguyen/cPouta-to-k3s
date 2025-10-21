@@ -1,0 +1,38 @@
+- name: Configure persistent DNS servers
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Ensure systemd-resolved config directory exists
+      file:
+        path: /etc/systemd/resolved.conf.d
+        state: directory
+        mode: "0755"
+
+    - name: Set Google and Cloudflare DNS for systemd-resolved
+      copy:
+        dest: /etc/systemd/resolved.conf.d/dns_servers.conf
+        content: |
+          [Resolve]
+          DNS=8.8.8.8 1.1.1.1
+      notify: Restart systemd-resolved
+
+  handlers:
+    - name: Restart systemd-resolved
+      systemd:
+        name: systemd-resolved
+        state: restarted
+        enabled: yes
+
+# - name: Ensure k3s-master is in /etc/hosts
+#   hosts: <IP>
+#   become: yes
+# 
+#   tasks:
+#     - name: Add k3s-master to /etc/hosts
+#       #lineinfile:
+#       ansible.builtin.lineinfile:
+#         path: /etc/hosts
+#         regexp: '^127\.0\.0\.1'
+#         line: "127.0.0.1   localhost k3s-master"
+# 

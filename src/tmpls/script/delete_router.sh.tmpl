@@ -1,0 +1,9 @@
+
+#!/bin/bash
+
+# Remove subnet from router
+openstack router remove subnet {{ .NeutronRouter.Name }} {{ .InternalNetwork.Subnet.Name }} || true
+
+# Delete router
+openstack router delete {{ .NeutronRouter.Name }} || true
+
