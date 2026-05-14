@@ -1,4 +1,4 @@
 input.local.yml
 src/output/
-tfstate
+.tfstate
 
