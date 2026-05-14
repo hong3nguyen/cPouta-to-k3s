@@ -186,7 +186,7 @@ func main() {
 	files := []string{"input.yml", "input.local.yml"}
 
 	for _, file := range files {
-		yamlFile, err := ioutil.ReadFile(file)
+		yamlFile, err := os.ReadFile(file)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
